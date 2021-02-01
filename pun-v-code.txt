@@ -1,0 +1,375 @@
+#Load Data----
+library(foreign)
+library(survey)
+library(knitr)
+pewdata = read.spss("Mar19public.sav", to.data.frame=TRUE)
+print(str(pewdata))
+write.csv(pewdata, file="pewdata.csv",row.names = FALSE)
+
+#####################################################################
+####DATA PREPARATION###############################################
+#####################################################################
+
+#Data Subsets----
+#Create new subset dataframe for key demographic information
+#To be recombined with combinations of original variables later
+#pewdata_sub_dem----
+pewdata_sub_dem <- subset(pewdata, select=
+                   c("respid","cregion","state","usr","scregion","sstate","susr","timezone","sex",
+                     "age","educ","racecmb",
+                     "racethn","relig","income","reg","party","partyln","partysum","ideo","partyideo",
+                     "partysumideo","hh1","hh3",
+                     "adults","weight")) 
+
+head(pewdata_sub_dem,5)
+
+#plot missing values in pewdata_sub_dem
+library(DataExplorer, quietly = TRUE)
+plot_missing(pewdata_sub_dem, missing_only = FALSE, title = "Missing Data - pewdata (key demographics subset)")
+
+#pewdata_sub_q_ALL----
+#For this exercise we will focus on gathering insights from questions that were asked to ALL participants
+pewdata_sub_q_ALL <- subset(pewdata, select = c("q1","q2","q19","q20","q25",
+                                               "q47",
+                                                "q50a","q50b","q50c","q50d","q50e",
+                                                "q58","q60",
+                                                "q61a","q61b","q61c",
+                                                "q64",
+                                                "q65a","q65b","q65c","q65d","q65e",
+                                                "q66","q68a","q68b","q68d","q69","q70","q71","q75" ))
+
+head(pewdata_sub_q_ALL)
+
+#plot missing values in pewdata_sub_q_ALL
+plot_missing(pewdata_sub_q_ALL, missing_only = FALSE, title = "Missing Data - pewdata (ASK ALL ONLY)")
+
+#Add Column - Age Group (agegrp)
+pewdata_sub_dem$age <- as.numeric(pewdata_sub_dem$age)
+pewdata_sub_dem$agegrp[pewdata_sub_dem$age<=29] <- "18-29"
+pewdata_sub_dem$agegrp[pewdata_sub_dem$age>=30 & pewdata_sub_dem$age<= 39] <- "30-39"
+pewdata_sub_dem$agegrp[pewdata_sub_dem$age>=40 & pewdata_sub_dem$age<= 49] <- "40-49"
+pewdata_sub_dem$agegrp[pewdata_sub_dem$age>=50 & pewdata_sub_dem$age<= 59] <- "50-59"
+pewdata_sub_dem$agegrp[pewdata_sub_dem$age>=60 & pewdata_sub_dem$age<= 69] <- "60-69"
+pewdata_sub_dem$agegrp[pewdata_sub_dem$age>=70] <- "70+"
+
+#Simplify Education Column (educ_revised)
+levels(pewdata_sub_dem$educ)
+pewdata_sub_dem$educ_revised[pewdata_sub_dem$educ == "Less than high school (Grades 1-8 or no formal schooling)"] <- "some hs"
+pewdata_sub_dem$educ_revised[pewdata_sub_dem$educ == "High school incomplete (Grades 9-11 or Grade 12 with NO diploma)"] <- "some hs"
+pewdata_sub_dem$educ_revised[pewdata_sub_dem$educ == "High school graduate (Grade 12 with diploma or GED certificate)"  ] <- "hs"
+pewdata_sub_dem$educ_revised[pewdata_sub_dem$educ == "Some college, no degree (includes some community college)"   ] <- "some college"
+pewdata_sub_dem$educ_revised[pewdata_sub_dem$educ == "Two year associate degree from a college or university"  ] <- "some college"
+pewdata_sub_dem$educ_revised[pewdata_sub_dem$educ == "Four year college or university degree/Bachelor's degree (e.g., BS, BA, AB)"] <- "college"
+pewdata_sub_dem$educ_revised[pewdata_sub_dem$educ == "Some postgraduate or professional schooling, no postgraduate degree (e.g. some graduate school)"] <- "some grad"
+pewdata_sub_dem$educ_revised[pewdata_sub_dem$educ == "Postgraduate or professional degree, including master's, doctorate, medical or law degree (e.g., MA, MS, PhD, MD, JD, gr"] <- "grad"
+pewdata_sub_dem$educ_revised[pewdata_sub_dem$educ == "(VOL) Don't know/Refused"] <- "Unreported"
+
+#May want to revise income column to make character strings less lengthy
+levels(pewdata_sub_dem$income)
+
+
+#Simplify party column (party2)
+levels(pewdata_sub_dem$party)
+pewdata_sub_dem$party_revised[pewdata_sub_dem$party == "Republican"] <- "Republican"
+pewdata_sub_dem$party_revised[pewdata_sub_dem$party == "Democrat"] <- "Democrat"
+pewdata_sub_dem$party_revised[pewdata_sub_dem$party == "Independent"] <- "Independent"
+pewdata_sub_dem$party_revised[pewdata_sub_dem$party == "(VOL) No preference"] <- "Other"
+pewdata_sub_dem$party_revised[pewdata_sub_dem$party == "(VOL) Other party"] <- "Other"
+pewdata_sub_dem$party_revised[pewdata_sub_dem$party == "(VOL) Don't know/Refused"] <- "Unreported"
+
+#########################################################################################################
+#check for any missing values in the data
+colSums(is.na(pewdata_sub_q_ALL_numframe))
+
+#create table to count null values and percentage against overall population 
+nullcount_df <- sapply(pewdata_sub_q_ALL_numframe,function(y) sum(length(which(is.na(y)))))
+nullcount_df <- data.frame(sort(nullcount_df[nullcount_df>=0], decreasing=TRUE))
+
+colnames(nullcount_df)[1] <- "NullCount"
+nullcount_df$PctNull <- round(nullcount_df$NullCount / (nrow(pewdata_sub_q_ALL_numframe)),2)
+
+nullcount_df
+
+
+#########################################################################################################3
+levels(pewdata_sub_q_ALL_numframe$q75)
+
+#convert characters to numeric factors using dplyr's recode function 
+
+library(dplyr)
+
+pewdata_sub_q_ALL_numframe <- pewdata_sub_q_ALL
+
+pewdata_sub_q_ALL_numframe$q1 <- recode(pewdata_sub_q_ALL_numframe$q1,"Satisfied" = 1, "Dissatisfied" = 2, "(VOL) Don't know/Refused" = 1.5)
+pewdata_sub_q_ALL_numframe$q2 <- recode(pewdata_sub_q_ALL_numframe$q2,"Approve" = 1, "Disapprove" = 2, "(VOL) Don't know/Refused" = 1.5)
+
+pewdata_sub_q_ALL_numframe$q19 <- recode(pewdata_sub_q_ALL_numframe$q19,"Most of the time" = 1, "Some of the time" = 2, "Only now and then" = 3, "Hardly at all" = 4, "(VOL) Don't know/Refused" = 2.5)
+pewdata_sub_q_ALL_numframe$q20 <- recode(pewdata_sub_q_ALL_numframe$q20,"Basically content" = 1, "Frustrated" = 2, "Angry" = 3, "(VOL) Don't know/Refused" = 2)
+pewdata_sub_q_ALL_numframe$q25 <- recode(pewdata_sub_q_ALL_numframe$q25,"Just about always" = 1, "Most of the time" = 2, "Only some of the time" = 3, "(VOL) Never" = 4, "(VOL) Don't know/Refused" = 2.5)
+pewdata_sub_q_ALL_numframe$q47 <- recode(pewdata_sub_q_ALL_numframe$q47,"Yes, keeping promises" = 1, "No, not keeping promises" = 2, "(VOL) Don't know/Refused" = 1.5)
+
+pewdata_sub_q_ALL_numframe$q50a <- recode(pewdata_sub_q_ALL_numframe$q50a,"Statement #1" = 1, "Statement #2" = 2, "(VOL) Neither/Both equally" = 1.5, "(VOL) Don't know/Refused" = 1.5)
+pewdata_sub_q_ALL_numframe$q50b <- recode(pewdata_sub_q_ALL_numframe$q50b,"Statement #1" = 1, "Statement #2" = 2, "(VOL) Neither/Both equally" = 1.5, "(VOL) Don't know/Refused" = 1.5)
+pewdata_sub_q_ALL_numframe$q50c <- recode(pewdata_sub_q_ALL_numframe$q50c,"Statement #1" = 1, "Statement #2" = 2, "(VOL) Neither/Both equally" = 1.5, "(VOL) Don't know/Refused" = 1.5)
+pewdata_sub_q_ALL_numframe$q50d <- recode(pewdata_sub_q_ALL_numframe$q50d,"Statement #1" = 1, "Statement #2" = 2, "(VOL) Neither/Both equally" = 1.5, "(VOL) Don't know/Refused" = 1.5)
+pewdata_sub_q_ALL_numframe$q50e <- recode(pewdata_sub_q_ALL_numframe$q50e,"Statement #1" = 1, "Statement #2" = 2, "(VOL) Neither/Both equally" = 1.5, "(VOL) Don't know/Refused" = 1.5)
+
+pewdata_sub_q_ALL_numframe$q58 <- recode(pewdata_sub_q_ALL_numframe$q58,"Strongly favor" = 1, "Favor" = 2, "Oppose" = 3, "Strongly oppose" = 4, "(VOL) Don't know/Refused" = 2.5)
+pewdata_sub_q_ALL_numframe$q60 <- recode(pewdata_sub_q_ALL_numframe$q60,"Sometimes fair game [OR IS IT]" = 1, "Never fair game" = 2, "(VOL) Other/Depends" = 1.5, "(VOL) Don't know/Refused" = 1.5)
+
+pewdata_sub_q_ALL_numframe$q61a <- recode(pewdata_sub_q_ALL_numframe$q61a,"A lot" = 4, "Some" = 3, "Only a little" = 2, "None at all" = 1, "(VOL) Don't know/Refused" = 2.5)
+pewdata_sub_q_ALL_numframe$q61b <- recode(pewdata_sub_q_ALL_numframe$q61b,"A lot" = 4, "Some" = 3, "Only a little" = 2, "None at all" = 1, "(VOL) Don't know/Refused" = 2.5)
+pewdata_sub_q_ALL_numframe$q61c <- recode(pewdata_sub_q_ALL_numframe$q61c,"A lot" = 4, "Some" = 3, "Only a little" = 2, "None at all" = 1, "(VOL) Don't know/Refused" = 2.5)
+
+pewdata_sub_q_ALL_numframe$q64 <- recode(pewdata_sub_q_ALL_numframe$q64,"Very fair" = 1, "Moderately fair" = 2, "Not too fair" = 3, "Not fair at all" = 4, "(VOL) Don't know/Refused" = 2.5)
+
+pewdata_sub_q_ALL_numframe$q65a <- recode(pewdata_sub_q_ALL_numframe$q65a,"A lot" = 4, "Some" = 3, "Not too much" = 2, "Not at all" = 1, "(VOL) Don't know/Refused" = 2.5)
+pewdata_sub_q_ALL_numframe$q65b <- recode(pewdata_sub_q_ALL_numframe$q65b,"A lot" = 4, "Some" = 3, "Not too much" = 2, "Not at all" = 1, "(VOL) Don't know/Refused" = 2.5)
+pewdata_sub_q_ALL_numframe$q65c <- recode(pewdata_sub_q_ALL_numframe$q65c,"A lot" = 4, "Some" = 3, "Not too much" = 2, "Not at all" = 1, "(VOL) Don't know/Refused" = 2.5)
+pewdata_sub_q_ALL_numframe$q65d <- recode(pewdata_sub_q_ALL_numframe$q65d,"A lot" = 4, "Some" = 3, "Not too much" = 2, "Not at all" = 1, "(VOL) Don't know/Refused" = 2.5)
+pewdata_sub_q_ALL_numframe$q65e <- recode(pewdata_sub_q_ALL_numframe$q65e,"A lot" = 4, "Some" = 3, "Not too much" = 2, "Not at all" = 1, "(VOL) Don't know/Refused" = 2.5)
+
+pewdata_sub_q_ALL_numframe$q66 <- recode(pewdata_sub_q_ALL_numframe$q66,"Increasing influence" = 1, "Losing influence" = 2, "(VOL) Same" = 1.5, "(VOL) Don't know/Refused" = 1.5)
+
+pewdata_sub_q_ALL_numframe$q68a <- recode(pewdata_sub_q_ALL_numframe$q68a,"Friendly toward religion" = 1, "Neutral toward religion" = 2, "Unfriendly toward religion" = 1.5, "(VOL) Don't know/Refused" = 1.5)
+pewdata_sub_q_ALL_numframe$q68b <- recode(pewdata_sub_q_ALL_numframe$q68b,"Friendly toward religion" = 1, "Neutral toward religion" = 2, "Unfriendly toward religion" = 1.5, "(VOL) Don't know/Refused" = 1.5)
+pewdata_sub_q_ALL_numframe$q68d <- recode(pewdata_sub_q_ALL_numframe$q68d,"Friendly toward religion" = 1, "Neutral toward religion" = 2, "Unfriendly toward religion" = 1.5, "(VOL) Don't know/Refused" = 1.5)
+
+pewdata_sub_q_ALL_numframe$q69 <- recode(pewdata_sub_q_ALL_numframe$q69,"Should keep out of political matters" = 1, "Should express their views on day-to-day social and political questions" = 2, 
+                                         "(VOL) Other/Depends" = 1.5, "(VOL) Don't know/Refused" = 1.5)
+
+pewdata_sub_q_ALL_numframe$q70 <- recode(pewdata_sub_q_ALL_numframe$q70,"Approve" = 1, "Disapprove" = 2, "(VOL) Don't know/Refused" = 1.5)
+
+pewdata_sub_q_ALL_numframe$q71 <- recode(pewdata_sub_q_ALL_numframe$q71,"Very well" = 1, "Somewhat well" = 2, "Not too well" = 3, "Not at all well" = 4, "(VOL) Don't know/Refused" = 2.5)
+
+pewdata_sub_q_ALL_numframe$q75 <- recode(pewdata_sub_q_ALL_numframe$q75,"A lot" = 1, "A little" = 2, "Nothing at all" = 3, "(VOL) Don't know/Refused" = 2)
+
+head(pewdata_sub_q_ALL_numframe)
+
+###########################################################################################
+###Min Max Normalization#####################################################################
+##########################################################################################
+#min max scaling/normalization
+normalize <- function(x)
+{
+    return((x- min(x)) /(max(x)-min(x)))
+}
+
+#lapply function normalize to pewdata_sub_q_ALL_numframe2
+pewdata_sub_q_ALL_numframe_normalize <- as.data.frame(lapply(pewdata_sub_q_ALL_numframe, FUN=normalize))
+
+#preview
+head(pewdata_sub_q_ALL_numframe,5)
+head(pewdata_sub_q_ALL_numframe_normalize,5)
+
+library(corrplot)
+library(gplots)
+
+#Correlation plot WITH normalization 
+
+pewdata_cor_normalized <- cor(pewdata_sub_q_ALL_numframe_normalize)
+
+corrplot(cor(pewdata_cor_normalized),order='hclust', tl.cex = .7, tl.col = 'blue', addrect = 12)
+
+#Principal Component Analysis (PCA)----
+
+my.pca <- prcomp(pewdata_cor_normalized)
+
+#View importance of components
+#first PC 57% proportion of variance
+#second PC 9.3% proprotion of variance
+#third PC 6.2% proportion of variance
+#fourth PC 3.3% proportion of variance
+summary(my.pca)
+
+#Interpret PCA rotation loadings 
+my.pca$rotation
+
+library(psych)
+library(lessR)
+
+Z <- eigen(pewdata_cor_normalized)
+
+#eigenvalue of 1.0 corresponds to the amoutn of variance that might be attributed to a single variable
+#a factor that captrues less variance tahn such an item may be considered relatively uninteresting
+
+#Chapman, pg. 211
+#Suggests possibly 8 factors 
+
+#Z$val
+#Z$vec
+
+fa.parallel(pewdata_cor_normalized, fa="both", n.iter=100, show.legend=TRUE,main="Scree plot with parallel analysis")
+
+#Factor Analysis——
+#No Rotation, 4 factors
+fa1<-fa(pewdata_sub_q_ALL_numframe2, nfactors=4, rotate="none", fm="pa")
+summary(fa1)
+fa1$loadings
+
+#varimax rotation
+fa2<-fa(pewdata_sub_q_ALL_numframe2, nfactors=4, rotate="varimax", fm="pa")
+summary(fa2)
+fa2$loadings
+
+#Chapman Marketing Research and Analytics pg. 216
+
+#FA Visualizations----
+
+#Heatmap of item-factor loadings
+#identify distinct separations between certain factors
+library(gplots)
+library(RColorBrewer)
+heatmap.2(fa2$loadings,
+          col=brewer.pal(20,"Greens"), trace="none", key=TRUE,
+          Colv=FALSE, cexCol = 2,
+          main = "\n\n\n\nFactor loadings for pewdata")
+
+#Path Diagram
+#Show latent variables and the individual items that load on them 
+#visual representation of factor analysis model, cut at loading 0.5 
+#draw loading estimates "est"
+#omit residual estimates for manifest variables
+#cut loadings absolute magnitude < 0.5 
+#
+library(semPlot)
+semPaths(fa2$loadings, what="est", residuals=FALSE,
+         cut=0.4, posCol=c("white","darkgreen"), negCol=c("white","red"),
+         edge.label.cex=0.75, nCharNodes=10)
+
+#####DIMENSIONALITY REDUCTION#####
+#In this section, we will be conducting feature engineering to reduce the dimensionality of the normalized dataset
+#finding the average of the normalized variables based on their realtionships
+#these relationships were determined by observing both the correlation plot, and semplot of the rotated factor analysis loadings (fa2) 
+#it is determined that four principal components will explain the majority of the variance found in this subset of the research data 
+
+#Create New Dataframe - pewdata_sub_q_ALL_numframe_normalize_reduced_1
+pewdata_sub_q_ALL_numframe_normalize_reduced_1 <- pewdata_sub_q_ALL_numframe_normalize
+
+#-------------------------------------------------------------------------
+#Politics and Election----
+
+# (P_trust_gov) Trust in Current Government (R) - Q20 + Q25
+pewdata_sub_q_ALL_numframe_normalize_reduced_1$P_trust_gov <- (pewdata_sub_q_ALL_numframe_normalize_reduced_1$q20 + pewdata_sub_q_ALL_numframe_normalize_reduced_1$q25)/2
+
+#(P_trumpapproval) Trump/Trump Administration Approval - Q1 + Q2 
+pewdata_sub_q_ALL_numframe_normalize_reduced_1$P_trumpapproval <- (pewdata_sub_q_ALL_numframe_normalize_reduced_1$q1 + pewdata_sub_q_ALL_numframe_normalize_reduced_1$q2)/2
+
+#(P_congressapproval) P Views of Congress (D) - Q47
+pewdata_sub_q_ALL_numframe_normalize_reduced_1$P_congressapproval <- (pewdata_sub_q_ALL_numframe_normalize_reduced_1$q47)
+
+#-------------------------------------------------------------------------
+#US Economy----
+
+#(TAXREG_lawapproval) REG Tax Laws sand Reform - Q64 + Q70
+pewdata_sub_q_ALL_numframe_normalize_reduced_1$TAXREG_lawapproval <- (pewdata_sub_q_ALL_numframe_normalize_reduced_1$q64 + pewdata_sub_q_ALL_numframe_normalize_reduced_1$q70)/2
+
+#(TAXREG_overallsentiment) REG Tax Sentiment - Q65a + Q65b
+pewdata_sub_q_ALL_numframe_normalize_reduced_1$TAXREG_overallsentiment <- (pewdata_sub_q_ALL_numframe_normalize_reduced_1$q65a + pewdata_sub_q_ALL_numframe_normalize_reduced_1$q65b)/2
+
+#(ECON_unfairsystem) ECON Favors powerful interests and corporate profit  - Q65e + Q65c + 50a + 50d
+pewdata_sub_q_ALL_numframe_normalize_reduced_1$ECON_unfairsystem <- (pewdata_sub_q_ALL_numframe_normalize_reduced_1$q65c + pewdata_sub_q_ALL_numframe_normalize_reduced_1$q65e + pewdata_sub_q_ALL_numframe_normalize_reduced_1$q50a + pewdata_sub_q_ALL_numframe_normalize_reduced_1$q50d)/4
+
+#(ECON_lawawareness) ECON Understanding Tax and Public Affairs - Q19 + Q71
+pewdata_sub_q_ALL_numframe_normalize_reduced_1$ECON_lawawareness <- (pewdata_sub_q_ALL_numframe_normalize_reduced_1$q19 + pewdata_sub_q_ALL_numframe_normalize_reduced_1$q71)/2
+
+#-------------------------------------------------------------------------
+#Race Religion, and Social Issues----
+
+#(RACE_minoritydiscrimination) RACE racial discrimination to minorities - Q61a + Q61b
+pewdata_sub_q_ALL_numframe_normalize_reduced_1$RACE_minoritydiscrimination <- (pewdata_sub_q_ALL_numframe_normalize_reduced_1$q61a + pewdata_sub_q_ALL_numframe_normalize_reduced_1$q61b)/2
+
+
+#(SOC_samesexmarriage) SOC Same Sex Marriage - Q58
+pewdata_sub_q_ALL_numframe_normalize_reduced_1$SOC_samesexmarriage <- (pewdata_sub_q_ALL_numframe_normalize_reduced_1$q58)
+
+#-------------------------------------------------------------------------
+#Foreign Policy----
+
+#(FOR_globalinvolvement) FOR GlobalInvolvement - 50b + 50c + 50e
+pewdata_sub_q_ALL_numframe_normalize_reduced_1$FOR_globalinvolvement <- (pewdata_sub_q_ALL_numframe_normalize_reduced_1$q50b + pewdata_sub_q_ALL_numframe_normalize_reduced_1$q50c + pewdata_sub_q_ALL_numframe_normalize_reduced_1$q50e)/3
+
+
+#-------------------------------------------------------------------------
+#Create New Dataframe - pewdata_sub_q_ALL_numframe_normalize_reduced_1
+pewdata_sub_q_ALL_numframe_normalize_reduced_2 <- pewdata_sub_q_ALL_numframe_normalize_reduced_1[ , -which(names(pewdata_sub_q_ALL_numframe_normalize_reduced_1) %in% c("q1","q2","q19","q20","q25","q47",
+                                                "q50a","q50b","q50c","q50d","q50e",
+                                                "q58","q60",
+                                                "q61a","q61b","q61c",
+                                                "q64",
+                                                "q65a","q65b","q65c","q65d","q65e",
+                                                "q66","q68a","q68b","q68d","q69","q70","q71","q75" ))]
+
+#Dimensions----
+
+#30 Variables - pewdata_sub_q_ALL_numframe_normalize
+#22 Interesting Variables (excluding 8 variables/questions becuase they do not seem to have any interesting relationships with the rest of the data)
+#11 Feature Engineered Variables 
+paste(dim(pewdata_sub_q_ALL_numframe_normalize))                                              
+paste(dim(pewdata_sub_q_ALL_numframe_normalize_reduced_2))
+
+
+####ANALYSIS AFTER DIMENSION REDUCTION####
+
+#Correlation plot----
+
+pewdata_cor_2 <- cor(pewdata_sub_q_ALL_numframe_normalize_reduced_2)
+
+corrplot(pewdata_cor_2,order='FPC', tl.cex = .7, tl.col = 'blue')
+
+#Principal Component Analysis (PCA)----
+
+my.pca2 <- prcomp(pewdata_cor_2)
+
+#First four principal components now explain 89% of the dataset's variance 
+
+#first PC 57% proportion of variance --> 69%
+#second PC 9.3% proprotion of variance --> 10.98%
+#third PC 6.2% proportion of variance --> 7.2% 
+#fourth PC 3.3% proportion of variance --> 3.1% 
+summary(my.pca2)
+
+#Interpret PCA rotation loadings 
+my.pca2$rotation
+
+#Factor Analysis 2 ----
+fa.parallel(pewdata_cor_2, fa="both", n.iter=100, show.legend=TRUE,main="Scree plot with parallel analysis")
+
+#No Rotation, 4 factors
+#fa3<-fa(pewdata_sub_q_ALL_numframe_normalize_reduced_2, nfactors=3, rotate="none", fm="pa")
+#summary(fa3)
+#fa3$loadings
+
+#varimax rotation
+fa4<-fa(pewdata_sub_q_ALL_numframe_normalize_reduced_2, nfactors=3, rotate="varimax", fm="pa")
+summary(fa4)
+fa4$loadings
+
+#Chapman Marketing Research and Analytics pg. 216
+
+#FA Visualizations2——
+
+#Heatmap of item-factor loadings
+#identify distinct separations between certain factors
+
+#Factor loadings for political opinions
+heatmap.2(fa4$loadings,
+          col=brewer.pal(9,"Greens"), trace="none", key=FALSE,
+          Colv=FALSE, 
+          cexCol = 1.2, cexRow = .7,
+          dend="none", lwid=c(0.1,1), lhei=c(0.1,2)
+          )
+          
+
+#Path Diagram
+#Show latent variables and the individual items that load on them 
+#visual representation of factor analysis model, cut at loading 0.5 
+#draw loading estimates "est"
+#omit residual estimates for manifest variables
+#cut loadings absolute magnitude < 0.325
+#
+
+semPaths(fa4$loadings, what="est", residuals=FALSE,
+         cut=0.3, posCol=c("white","darkgreen"), negCol=c("white","red"),
+         edge.label.cex=1, nCharNodes=8, sizeMan = 7)
+
